@@ -26,6 +26,7 @@ class Printer extends EventEmitter {
 		this.allowLocal = options.allowLocal || false;
 		this.allowRemote = typeof options.allowRemote !== "undefined" ? options.allowRemote : true;
 		this.additionalScripts = options.additionalScripts || [];
+		this.pageScript = options.pageScript || null;
 		this.allowedPaths = options.allowedPaths || [];
 		this.allowedDomains = options.allowedDomains || [];
 		this.ignoreHTTPSErrors = options.ignoreHTTPSErrors || false;
@@ -87,12 +88,15 @@ class Printer extends EventEmitter {
 			resolver = resolve;
 		});
 
+
 		if (!this.browser) {
 			await this.setup();
 		}
 
 		try {
 			const page = await this.browser.newPage();
+
+
 			page.setDefaultTimeout(this.timeout);
 
 			page.setExtraHTTPHeaders(this.extraHTTPHeaders);
@@ -121,7 +125,6 @@ class Printer extends EventEmitter {
 				url = input.url;
 				html = input.html;
 			}
-
 			if (this.needsAllowedRules()) {
 				await page.setRequestInterception(true);
 
@@ -159,6 +162,8 @@ class Printer extends EventEmitter {
 					window.PagedConfig = { auto: false };
 				});
 			}
+
+
 
 			if (html) {
 				await page.setContent(html);
@@ -203,6 +208,13 @@ class Printer extends EventEmitter {
 				});
 			}
 
+			// Inject a user-specified page script that can modify each page.
+			if (this.pageScript) {
+				await page.addScriptTag({
+					[this.isUrl(this.pageScript) ? "url" : "path"]: this.pageScript
+				});
+			}
+
 			await page.exposeFunction("onSize", (size) => {
 				this.emit("size", size);
 			});
@@ -223,7 +235,6 @@ class Printer extends EventEmitter {
 				let done;
 				window.PagedPolyfill.on("page", (page) => {
 					const { id, width, height, startToken, endToken, breakAfter, breakBefore, position } = page;
-
 					const mediabox = page.element.getBoundingClientRect();
 					const cropbox = page.pagebox.getBoundingClientRect();
 
@@ -246,7 +257,77 @@ class Printer extends EventEmitter {
 						}
 					};
 
-					window.onPage({ id, width, height, startToken, endToken, breakAfter, breakBefore, position, boxes });
+					// Allow an injected page script to modify the page element.
+					try {
+						if (typeof window.onPagedPage === 'function') {
+							// give the user's hook the page element and metadata
+							window.onPagedPage(page.element, { id, width, height, startToken, endToken, breakAfter, breakBefore, position, boxes });
+						}
+					} catch (e) {
+						// ignore errors from user script
+					}
+
+					// Default aggregation: for any <table data-aggregate="ATTR"> inside the page,
+					// sum ATTR values from cells and append a per-page summary.
+					try {
+						const tables = page.element.querySelectorAll('table[data-aggregate]');
+						if (tables.length > 0) {
+							const summaries = [];
+							tables.forEach((table, idx) => {
+								const attrName = table.getAttribute('data-aggregate') || 'data-value';
+								const label = table.getAttribute('data-aggregate-label') || ('Table ' + (idx + 1));
+								let sum = 0;
+								let found = false;
+								table.querySelectorAll('td,th').forEach((cell) => {
+									if (cell.hasAttribute(attrName)) {
+										const raw = cell.getAttribute(attrName).replace(/,/g, '').trim();
+										const num = parseFloat(raw);
+										if (!Number.isNaN(num)) {
+											sum += num;
+											found = true;
+										}
+									}
+								});
+
+								if (found) {
+									summaries.push({ label, attrName, sum });
+								}
+							});
+
+							if (summaries.length > 0) {
+								try {
+									let container = page.element.querySelector('.pagedjs-page-summaries');
+									if (!container) {
+										container = document.createElement('div');
+										container.className = 'pagedjs-page-summaries';
+										Object.assign(container.style, { marginTop: '8px', fontSize: '12px' });
+										page.element.appendChild(container);
+									}
+
+									summaries.forEach((s) => {
+										const el = document.createElement('div');
+										el.className = 'pagedjs-page-summary';
+										el.textContent = s.label + ': ' + s.sum;
+										container.appendChild(el);
+									});
+								} catch (e) {
+									// ignore DOM errors
+								}
+							}
+						}
+					} catch (e) {
+						// swallow aggregation errors to avoid breaking rendering
+					}
+
+					// Serialize page HTML so the host can retrieve per-page markup
+					let pageHtml = "";
+					try {
+						pageHtml = page.element ? page.element.outerHTML : "";
+					} catch (e) {
+						pageHtml = "";
+					}
+
+					window.onPage({ id, width, height, startToken, endToken, breakAfter, breakBefore, position, boxes, html: pageHtml });
 				});
 
 				window.PagedPolyfill.on("size", (size) => {
@@ -331,17 +412,23 @@ class Printer extends EventEmitter {
 				}
 			};
 
+			console.log('-------------ghmzf-----------------------');
+
+			console.log('settings : ', settings);
 			let pdf = await page.pdf(settings)
 				.catch((e) => {
 					throw e;
 				});
 
+			// console.log('pdf : ', pdf);
 			this.closeAfter && page.close();
-
+			
 			this.emit("postprocessing");
-
+			
 			let pdfDoc = await PDFDocument.load(pdf);
+			// console.log('pdfDoc : ', pdfDoc);
 
+			console.log('-------------ghmzf-----------------------');
 			setMetadata(pdfDoc, meta);
 			setTrimBoxes(pdfDoc, this.pages);
 			setOutline(pdfDoc, outline, this.enableWarnings);

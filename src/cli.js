@@ -39,6 +39,7 @@ program
           "added to the HTML document before rendering. This is useful for " +
           "adding custom pagedjs handlers. The option can be repeated.",
 	collect, [])
+	.option("--page-script <script>", "Path to a script that will be injected and can modify each page before serialization")
 	.option("--browserEndpoint <browserEndpoint>", "Use a remote Chrome server with browserWSEndpoint")
 	.option("--browserArgs <browserArgs>", "Launch Chrome with comma separated args", commaSeparatedList)
 	.option("--media [media]", "Emulate \"print\" or \"screen\" media, defaults to print.")
@@ -122,6 +123,7 @@ if (typeof input === "string") {
 		allowedPaths: options.allowedPaths,
 		allowedDomains: options.allowedDomains,
 		additionalScripts: options.additionalScript,
+		pageScript: options.pageScript,
 		styles: options.style,
 		browserEndpoint: options.browserEndpoint,
 		timeout: options.timeout,
