@@ -1,6 +1,7 @@
 import EventEmitter from "events";
 import puppeteer from "puppeteer";
 
+
 import path from "path";
 import fs from "fs";
 import { mkdtemp, cp } from "fs/promises";
@@ -11,9 +12,11 @@ import { fileURLToPath } from "url";
 import { PDFDocument } from "pdf-lib";
 import { setTrimBoxes, setMetadata } from "./postprocesser.js";
 import { parseOutline, setOutline } from "./outline.js";
+import { JSDOM } from "jsdom";
 
 const currentPath = fileURLToPath(import.meta.url);
 const dir = process.cwd();
+
 
 const scriptPath = path.resolve(path.dirname(currentPath), "../dist/browser.js");
 
@@ -164,10 +167,9 @@ class Printer extends EventEmitter {
 			}
 
 
-
+			
 			if (html) {
 				await page.setContent(html);
-
 				if (url) {
 					await page.evaluate((url) => {
 						let base = document.querySelector("base");
@@ -184,6 +186,102 @@ class Printer extends EventEmitter {
 			}
 
 			this.content = await page.content();
+
+await page.evaluate(() => {
+  try {
+    const tables = document.querySelectorAll('table[data-aggregate]');
+
+	console.log('ta', tables.length)
+    if (!tables.length) return;
+
+    const summaries = [];
+	let tts = [];
+    tables.forEach((table, idx) => {
+      const attrName = 'data-aggregate';
+      const label = table.getAttribute('data-aggregate-label') || 'Table ' + (idx + 1);
+      let sum = 0;
+      let found = false;
+
+	  let map = [];
+
+      table.querySelectorAll('tr').forEach((row) => {
+		const tds = row.querySelectorAll(`td[${attrName}]`);
+        if (tds) {
+			tds.forEach((td) => {
+				const value = td.cellIndex;
+				map.push({ index: value, val: td.innerHTML.replace(/,/g, '').trim()});
+				console.log('td : ', value);
+			});
+        }
+	  });
+      table.querySelectorAll('td').forEach((cell) => {
+        if (cell.hasAttribute(attrName)) {
+          const raw = (cell.getAttribute(attrName) || '').replace(/,/g, '').trim();
+          const num = parseFloat(raw);
+          if (!Number.isNaN(num)) {
+            sum += num;
+            found = true;
+          }
+        }
+      });
+
+      if (found) summaries.push({ label, sum });
+	  
+const result = Object.values(
+  map.reduce((acc, { index, val }) => {
+    acc[index] ??= { index, sum: 0 };
+    acc[index].sum += Number(val);
+    return acc;
+  }, {})
+);
+	console.log('result: ', result);
+
+	tts = result;
+    });
+
+
+    if (!summaries.length) return;
+
+    let container = document.querySelector('.pagedjs-page-summaries');
+    if (!container) {
+      container = document.createElement('div');
+      container.className = 'pagedjs-page-summaries';
+      Object.assign(container.style, { marginTop: '8px', fontSize: '12px' });
+      document.body.appendChild(container);
+    }
+
+    summaries.forEach((s) => {
+      const el = document.createElement('div');
+	  console.log('s ', s);
+	  console.log('e ', el);
+      el.className = 'pagedjs-page-summary';
+      el.textContent = s.label + ': ' + s.sum;
+      container.appendChild(el);
+    });
+
+    // Create table in footer based on tts variable
+    if (tts && tts.length > 0) {
+      const table = document.createElement('table');
+      Object.assign(table.style, { marginTop: '12px', fontSize: '11px', borderCollapse: 'collapse', width: '100%' });
+      
+      const tbody = document.createElement('tbody');
+      const tr = document.createElement('tr');
+      
+      tts.forEach(({ index, sum }) => {
+        const td = document.createElement('td');
+        Object.assign(td.style, { border: '1px solid #ccc', padding: '4px' });
+        td.textContent = sum;
+        tr.appendChild(td);
+      });
+      
+      tbody.appendChild(tr);
+      table.appendChild(tbody);
+      container.appendChild(table);
+    }
+  } catch (e) {
+    // ignore DOM errors
+  }
+});
 
 			if (!this.disableScriptInjection) {
 				await page.evaluate(() => {
@@ -267,64 +365,11 @@ class Printer extends EventEmitter {
 						// ignore errors from user script
 					}
 
-					// Default aggregation: for any <table data-aggregate="ATTR"> inside the page,
-					// sum ATTR values from cells and append a per-page summary.
-					try {
-						const tables = page.element.querySelectorAll('table[data-aggregate]');
-						if (tables.length > 0) {
-							const summaries = [];
-							tables.forEach((table, idx) => {
-								const attrName = table.getAttribute('data-aggregate') || 'data-value';
-								const label = table.getAttribute('data-aggregate-label') || ('Table ' + (idx + 1));
-								let sum = 0;
-								let found = false;
-								table.querySelectorAll('td,th').forEach((cell) => {
-									if (cell.hasAttribute(attrName)) {
-										const raw = cell.getAttribute(attrName).replace(/,/g, '').trim();
-										const num = parseFloat(raw);
-										if (!Number.isNaN(num)) {
-											sum += num;
-											found = true;
-										}
-									}
-								});
-
-								if (found) {
-									summaries.push({ label, attrName, sum });
-								}
-							});
-
-							if (summaries.length > 0) {
-								try {
-									let container = page.element.querySelector('.pagedjs-page-summaries');
-									if (!container) {
-										container = document.createElement('div');
-										container.className = 'pagedjs-page-summaries';
-										Object.assign(container.style, { marginTop: '8px', fontSize: '12px' });
-										page.element.appendChild(container);
-									}
-
-									summaries.forEach((s) => {
-										const el = document.createElement('div');
-										el.className = 'pagedjs-page-summary';
-										el.textContent = s.label + ': ' + s.sum;
-										container.appendChild(el);
-									});
-								} catch (e) {
-									// ignore DOM errors
-								}
-							}
-						}
-					} catch (e) {
-						// swallow aggregation errors to avoid breaking rendering
-					}
-
 					// Serialize page HTML so the host can retrieve per-page markup
 					let pageHtml = "";
 					try {
-						pageHtml = page.element ? page.element.outerHTML : "";
+		                pageHtml = page.element ? page.element.outerHTML : "";
 					} catch (e) {
-						pageHtml = "";
 					}
 
 					window.onPage({ id, width, height, startToken, endToken, breakAfter, breakBefore, position, boxes, html: pageHtml });
@@ -444,7 +489,7 @@ class Printer extends EventEmitter {
 
 	async html(input, stayopen) {
 		let page = await this.render(input);
-
+		
 		let content = await page.content();
 
 		if (this.closeAfter) {
