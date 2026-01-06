@@ -252,8 +252,6 @@ const result = Object.values(
 
     summaries.forEach((s) => {
       const el = document.createElement('div');
-	  console.log('s ', s);
-	  console.log('e ', el);
       el.className = 'pagedjs-page-summary';
       el.textContent = s.label + ': ' + s.sum;
       container.appendChild(el);
