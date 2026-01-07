@@ -92,7 +92,7 @@ class Printer extends EventEmitter {
 		});
 
 
-		if (! this.browser) {
+		if (!this.browser) {
 			await this.setup();
 		}
 
@@ -173,7 +173,7 @@ class Printer extends EventEmitter {
 				if (url) {
 					await page.evaluate((url) => {
 						let base = document.querySelector("base");
-						if (! base) {
+						if (!base) {
 							base = document.createElement("base");
 							document.querySelector("head").appendChild(base);
 						}
@@ -211,12 +211,18 @@ class Printer extends EventEmitter {
 								// Determine column count from the first table with headers
 								let columnCount = 0;
 								let headerTexts = [];
+								let columnWidths = [];
 								
 								pageTables.forEach(table => {
 									const headerRow = table.querySelector("thead tr") || table.querySelector("tr");
 									if (headerRow && headerRow.cells.length > columnCount) {
 										columnCount = headerRow.cells.length;
 										headerTexts = Array.from(headerRow.cells).map(cell => cell.textContent.trim());
+										// Get computed widths from the original table cells
+										columnWidths = Array.from(headerRow.cells).map(cell => {
+											const computedStyle = window.getComputedStyle(cell);
+											return computedStyle.width || 'auto';
+										});
 									}
 								});
 
@@ -243,6 +249,10 @@ class Printer extends EventEmitter {
 								const hasValues = sums.some((v) => v !== null);
 								if (! hasValues) return;
 
+								// Find the original table to get its styles and position
+								const originalTable = pageTables[0];
+								const tableStyles = window.getComputedStyle(originalTable);
+								
 								// Find the page area to append the summary table
 								const pageArea = page.querySelector(".pagedjs_page_content") || page.querySelector(".pagedjs_area") || page;
 
@@ -250,26 +260,38 @@ class Printer extends EventEmitter {
 								const wrapper = document.createElement("div");
 								wrapper.className = "pagedjs-page-aggregates";
 								Object.assign(wrapper.style, {
-									marginTop: "20px",
-									padding: "10px",
-									borderTop: "2px solid #333",
-									fontSize: "12px",
+									marginTop: "5px",
+									marginBottom: "10px",
+									padding: "0",
+									fontSize: tableStyles.fontSize || "12px",
 									pageBreakInside: "avoid",
+									width: "100%",
+									display: "block",
+									clear: "both",
+									overflow: "visible",
+									position: "relative",
+									zIndex: "1000",
 								});
 
-								// Create label
+								// Create label (empty as per your requirement)
 								const label = document.createElement("div");
-								label.textContent = ''; //`Page ${pageIndex + 1} Totals`;
+								label.textContent = '';
 								label.style.fontWeight = "bold";
-								label.style.marginBottom = "8px";
+								label.style.marginBottom = "0px";
 								wrapper.appendChild(label);
 
 								// Create summary table
 								const summaryTable = document.createElement("table");
 								Object.assign(summaryTable.style, {
-									width: "100%",
-									borderCollapse:  "collapse",
-									tableLayout: "auto",
+									width: tableStyles.width || "100%",
+									borderCollapse: "collapse",
+									tableLayout: tableStyles.tableLayout || "fixed",
+									display: "table",
+									margin: "0",
+									padding: "0",
+									fontSize: "inherit",
+									fontFamily: tableStyles.fontFamily || "inherit",
+									backgroundColor: "#fffacd",
 								});
 
 								const tbody = document.createElement("tbody");
@@ -278,10 +300,22 @@ class Printer extends EventEmitter {
 								for (let i = 0; i < columnCount; i++) {
 									const td = document.createElement("td");
 									Object.assign(td.style, {
-										borderTop: "1px solid #666",
+										borderTop: "2px solid #333",
 										borderRight: "1px solid #666",
-										borderLeft: "1px solid #666",
-										padding: "6px",
+										borderLeft: i === 0 ? "1px solid #666" : "1px solid #666",
+										borderBottom: "2px solid #333",
+										padding: tableStyles.padding || "6px",
+										fontWeight: "bold",
+										fontSize: "inherit",
+										textAlign: "right",
+										verticalAlign: "middle",
+										width: columnWidths[i] || "auto",
+										minWidth: "50px",
+										maxWidth: "none",
+										overflow: "visible",
+										whiteSpace: "nowrap",
+										backgroundColor: "#fffacd",
+										boxSizing: "border-box",
 									});
 									td.textContent = sums[i] !== null ? formatNumber(sums[i]) : "";
 									totalsRow.appendChild(td);
@@ -291,8 +325,19 @@ class Printer extends EventEmitter {
 								summaryTable.appendChild(tbody);
 								wrapper.appendChild(summaryTable);
 
-								// Append to page
-								pageArea.appendChild(wrapper);
+								// Append to page - try multiple insertion points
+								try {
+									// First, try to insert after the last table
+									const lastTable = pageTables[pageTables.length - 1];
+									if (lastTable.parentNode) {
+										lastTable.parentNode.insertBefore(wrapper, lastTable.nextSibling);
+									} else {
+										pageArea.appendChild(wrapper);
+									}
+								} catch (e) {
+									// Fallback:  append to page area
+									pageArea.appendChild(wrapper);
+								}
 							});
 						} catch (e) {
 							console.error("Error in aggregation:", e);
@@ -308,7 +353,7 @@ class Printer extends EventEmitter {
 				}
 			});
 
-			if (! this.disableScriptInjection) {
+			if (!this.disableScriptInjection) {
 				await page.evaluate(() => {
 					window.PagedConfig = window.PagedConfig || {};
 					window.PagedConfig.auto = false;
@@ -475,7 +520,7 @@ class Printer extends EventEmitter {
 				height: options.height,
 				orientation: options.orientation,
 				margin: {
-					top:  0,
+					top: 0,
 					right: 0,
 					bottom: 0,
 					left: 0,
