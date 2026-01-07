@@ -92,3 +92,58 @@ Run the Docker image
 ```bash
 docker run -it --init --security-opt 'seccomp=seccomp.json' pagedmedia/pagedjs-cli bash
 ```
+
+## Column Aggregation
+
+This code demonstrates the aggregation of columns at the end of every page. For columns that have the `data-aggregate` attribute, the system will automatically calculate the sum of values on each page and display totals at the bottom. 
+
+### How It Works
+
+1. Add `data-aggregate` attribute to your `<table>` element
+2. Add `data-aggregate` attribute to each `<td>` cell that contains numeric values you want to sum
+3. The printer will automatically generate a totals row at the bottom of each page
+
+### Visual Example
+
+**Original Table (spans multiple pages):**
+```
+Page 1:
+Amount Deposited | Amount Withdrawn | Branch Code | Current Balance | Date       | Description
+-------------------------------------------------------------------------------------------------
+1000             | 0                | BR001       | 5000            | 2026-01-01 | Cash Deposit
+0                | 750              | BR002       | 4250            | 2026-01-02 | ATM Withdrawal
+500              | 0                | BR001       | 4750            | 2026-01-03 | Transfer In
+-------------------------------------------------------------------------------------------------
+1500             | 750              |             | 14000           |            |              ← Auto-generated totals
+
+Page 2:
+Amount Deposited | Amount Withdrawn | Branch Code | Current Balance | Date       | Description
+-------------------------------------------------------------------------------------------------
+2000             | 0                | BR003       | 6750            | 2026-01-04 | Check Deposit
+0                | 1000             | BR001       | 5750            | 2026-01-05 | Bill Payment
+-------------------------------------------------------------------------------------------------
+2000             | 1000             |             | 12500           |            |              ← Auto-generated totals
+```
+
+## Required Attributes
+
+### `data-aggregate` on `<table>`
+
+**Purpose:** Enables aggregation feature for the table
+
+**Usage:**
+```html
+<table data-aggregate>
+  <!-- table content -->
+</table>
+```
+
+**Description:** This attribute must be present on the `<table>` element to activate the column aggregation feature.  Without this attribute, no totals will be calculated.
+
+---
+
+### `data-aggregate` on `<td>`
+
+**Purpose:** Marks a cell's value for aggregation and provides the numeric value to sum
+
+**Usage:**
