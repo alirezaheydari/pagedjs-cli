@@ -278,10 +278,10 @@ class Printer extends EventEmitter {
 								for (let i = 0; i < columnCount; i++) {
 									const td = document.createElement("td");
 									Object.assign(td.style, {
-										border: "1px solid #666",
+										borderTop: "1px solid #666",
+										borderRight: "1px solid #666",
+										borderLeft: "1px solid #666",
 										padding: "6px",
-										fontWeight: "bold",
-										backgroundColor: "#fffacd",
 									});
 									td.textContent = sums[i] !== null ? formatNumber(sums[i]) : "";
 									totalsRow.appendChild(td);
