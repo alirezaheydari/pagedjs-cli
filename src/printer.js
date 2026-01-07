@@ -482,23 +482,15 @@ class Printer extends EventEmitter {
 				}
 			};
 
-			console.log('-------------ghmzf-----------------------');
-
-			console.log('settings : ', settings);
 			let pdf = await page.pdf(settings)
 				.catch((e) => {
 					throw e;
 				});
-
-			// console.log('pdf : ', pdf);
 			this.closeAfter && page.close();
 			
 			this.emit("postprocessing");
 			
 			let pdfDoc = await PDFDocument.load(pdf);
-			// console.log('pdfDoc :  ', pdfDoc);
-
-			console.log('-------------ghmzf-----------------------');
 			setMetadata(pdfDoc, meta);
 			setTrimBoxes(pdfDoc, this.pages);
 			setOutline(pdfDoc, outline, this.enableWarnings);
